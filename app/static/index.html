@@ -8,13 +8,27 @@
 <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🌸</text></svg>">
 <link rel="stylesheet" href="styles.css">
 </head>
-<body>
+<body class="booting logged-out">
+<section class="login-page" id="loginPage">
+  <div class="login-bg" id="loginBg" aria-hidden="true"></div>
+  <form class="login-card" id="loginForm">
+    <div class="brand"><span class="logo">✿</span><span>Petal&nbsp;&amp;&nbsp;Thread</span></div>
+    <h1>Welcome back</h1>
+    <p class="hint">Log in to browse the handmade flower gallery.</p>
+    <label>Username<input id="loginUser" autocomplete="username" autocapitalize="none" spellcheck="false" required></label>
+    <label>Password<input type="password" id="loginPw" autocomplete="current-password" required></label>
+    <p class="form-error" id="loginErr" hidden></p>
+    <button class="btn-primary wide" type="submit" id="loginSubmit">Log in</button>
+  </form>
+</section>
+
 <aside class="sidebar" id="sidebar">
   <div class="brand"><span class="logo">✿</span><span>Petal&nbsp;&amp;&nbsp;Thread</span></div>
   <nav id="categories" aria-label="Categories"></nav>
   <div class="side-section">
     <button class="btn-primary wide admin-only" id="openUpload">+ Upload</button>
-    <button class="btn-ghost wide" id="adminBtn">Admin login</button>
+    <p class="who" id="who"></p>
+    <button class="btn-ghost wide" id="logoutBtn">Log out</button>
   </div>
   <p class="side-note">A hobby gallery of handmade flowers. Not a shop, just for looking.</p>
 </aside>
@@ -77,17 +91,6 @@
     <textarea id="upDesc" placeholder="Tell us about it (materials, how long it took…)" rows="3" maxlength="300"></textarea>
     <p class="hint" id="upHint">Visible to everyone as soon as you publish.</p>
     <button class="btn-primary wide" type="submit" id="upSubmit">Publish</button>
-  </form>
-</div>
-
-<div class="modal" id="login" aria-hidden="true">
-  <form class="modal-card upload-card" id="loginForm">
-    <button type="button" class="icon-btn close" data-close aria-label="Close">✕</button>
-    <h2 id="loginHeading">Admin login</h2>
-    <p class="hint" id="loginHint">Only the admin can add, edit or delete products.</p>
-    <input type="password" id="loginPw" placeholder="Password" autocomplete="current-password" required minlength="8">
-    <p class="form-error" id="loginErr" hidden></p>
-    <button class="btn-primary wide" type="submit" id="loginSubmit">Log in</button>
   </form>
 </div>
 

@@ -98,7 +98,29 @@ kbd{font-size:11px;color:var(--muted);border:1px solid var(--muted);border-radiu
 @keyframes rise{from{opacity:0;transform:translateY(16px)}to{opacity:1;transform:none}}
 
 body:not(.is-admin) .admin-only{display:none!important}
-.admin-pill{display:inline-flex;align-items:center;gap:6px;font-size:12px;font-weight:700;color:var(--accent);padding:0 8px}
+
+/* login page */
+body.booting>*{visibility:hidden}
+body.logged-out{overflow:hidden}
+body.logged-out :is(.sidebar,.main,.scrim){display:none}
+.login-page{position:fixed;inset:0;z-index:40;display:grid;place-items:center;padding:20px;background:var(--bg);overflow:hidden;transition:opacity .45s var(--ease),visibility .45s}
+body:not(.logged-out) .login-page{opacity:0;visibility:hidden;pointer-events:none}
+.login-bg{position:absolute;inset:-20px;columns:6 170px;column-gap:14px;opacity:.45;filter:saturate(1.1);animation:drift 60s linear infinite alternate}
+.login-bg img{display:block;width:100%;margin-bottom:14px;border-radius:var(--radius)}
+.login-page::before{content:"";position:absolute;inset:0;z-index:1;background:radial-gradient(circle at center,color-mix(in srgb,var(--bg) 70%,transparent) 0,color-mix(in srgb,var(--bg) 92%,transparent) 70%)}
+@keyframes drift{to{transform:translateY(-35%)}}
+.login-card{position:relative;z-index:2;width:min(400px,100%);background:var(--card);border-radius:28px;padding:32px;box-shadow:0 30px 80px rgba(60,30,30,.18);display:flex;flex-direction:column;gap:12px;animation:rise .6s var(--ease) both}
+.login-card .brand{margin-bottom:6px}
+.login-card h1{margin:0;font-size:28px;letter-spacing:-.02em}
+.login-card label{display:flex;flex-direction:column;gap:6px;font-size:13px;font-weight:600;color:var(--muted)}
+.login-card input{width:100%;border:1px solid var(--line);background:var(--bg);color:var(--ink);border-radius:14px;padding:12px 14px;font-size:15px;outline:none;transition:border-color .2s,box-shadow .2s}
+.login-card input:focus{border-color:var(--accent);box-shadow:0 0 0 3px color-mix(in srgb,var(--accent) 25%,transparent)}
+.login-card .btn-primary{margin-top:6px;padding:14px}
+.login-card.shake{animation:shake .4s}
+@keyframes shake{25%{transform:translateX(-8px)}50%{transform:translateX(8px)}75%{transform:translateX(-4px)}}
+.who{margin:0 0 4px;font-size:13px;color:var(--muted);padding:0 8px}
+.who b{color:var(--ink)}
+.role{display:inline-block;margin-left:4px;padding:2px 8px;border-radius:999px;font-size:11px;font-weight:700;background:var(--line);color:var(--accent);text-transform:uppercase;letter-spacing:.04em}
 .form-error{color:#c0392b;font-size:13px;margin:0}
 .btn-primary:disabled{opacity:.6;cursor:progress}
 

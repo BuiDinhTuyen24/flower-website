@@ -10,7 +10,7 @@ import uuid
 from pathlib import Path
 from typing import Optional
 
-from fastapi import Depends, FastAPI, File, Form, Header, HTTPException, UploadFile
+from fastapi import Cookie, Depends, FastAPI, File, Form, HTTPException, Request, Response, UploadFile
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
@@ -87,87 +87,85 @@ def _hash(password: str, salt: str) -> str:
     return hashlib.pbkdf2_hmac("sha256", password.encode(), bytes.fromhex(salt), 200_000).hex()
 
 
+def _account(role: str, env: str) -> dict:
+    password = os.environ.get(env, "12345678")
+    salt = secrets.token_hex(16)
+    return {"role": role, "salt": salt, "hash": _hash(password, salt),
+            "fp": hashlib.sha256(password.encode()).hexdigest()[:16]}
+
+
+# Default passwords are 12345678; override with ADMIN_PASSWORD / USER_PASSWORD.
+ACCOUNTS = {"admin": _account("admin", "ADMIN_PASSWORD"), "user": _account("user", "USER_PASSWORD")}
+COOKIE = "pt_session"
+
+
 def _sign(payload: str) -> str:
     return hmac.new(bytes.fromhex(_read(AUTH_FILE, {})["secret"]), payload.encode(), hashlib.sha256).hexdigest()
 
 
-def _make_token() -> str:
-    payload = f"admin.{int(time.time()) + TOKEN_TTL}"
-    return f"{payload}.{_sign(payload)}"
+def _make_token(username: str) -> str:
+    payload = f"{username}.{int(time.time()) + TOKEN_TTL}"
+    # Including the password fingerprint logs everyone out when a password changes.
+    return f"{payload}.{_sign(payload + '.' + ACCOUNTS[username]['fp'])}"
 
 
-def _valid(token: str) -> bool:
+def _session(token: Optional[str]) -> Optional[dict]:
     try:
-        role, exp, sig = token.split(".")
-    except ValueError:
-        return False
-    payload = f"{role}.{exp}"
-    return role == "admin" and int(exp) > time.time() and hmac.compare_digest(sig, _sign(payload))
+        username, exp, sig = (token or "").split(".")
+        acct = ACCOUNTS[username]
+        ok = int(exp) > time.time() and hmac.compare_digest(sig, _sign(f"{username}.{exp}.{acct['fp']}"))
+    except (ValueError, KeyError):
+        return None
+    return {"username": username, "role": acct["role"]} if ok else None
 
 
-def require_admin(authorization: Optional[str] = Header(None)) -> None:
-    token = (authorization or "").removeprefix("Bearer ").strip()
-    if not _valid(token):
-        raise HTTPException(401, "Admin login required")
+def current_session(pt_session: Optional[str] = Cookie(None)) -> Optional[dict]:
+    return _session(pt_session)
+
+
+def require_user(sess: Optional[dict] = Depends(current_session)) -> dict:
+    if not sess:
+        raise HTTPException(401, "Please log in")
+    return sess
+
+
+def require_admin(sess: dict = Depends(require_user)) -> None:
+    if sess["role"] != "admin":
+        raise HTTPException(403, "Only the admin can do that")
 
 
 app = FastAPI(title="Petal & Thread")
 
 
 class Creds(BaseModel):
+    username: str
     password: str
 
 
-class NewPassword(BaseModel):
-    current: str
-    new: str
-
-
 @app.get("/api/me")
-def me(authorization: Optional[str] = Header(None)):
-    token = (authorization or "").removeprefix("Bearer ").strip()
-    return {"admin": _valid(token), "setup_needed": "hash" not in _read(AUTH_FILE, {})}
-
-
-@app.post("/api/setup")
-def setup(body: Creds):
-    with lock:
-        auth = _read(AUTH_FILE, {})
-        if "hash" in auth:
-            raise HTTPException(409, "Admin password already set")
-        if len(body.password) < 8:
-            raise HTTPException(400, "Password must be at least 8 characters")
-        auth["salt"] = secrets.token_hex(16)
-        auth["hash"] = _hash(body.password, auth["salt"])
-        _write(AUTH_FILE, auth)
-    return {"token": _make_token()}
+def me(sess: Optional[dict] = Depends(current_session)):
+    return sess or {"username": None, "role": None}
 
 
 @app.post("/api/login")
-def login(body: Creds):
-    auth = _read(AUTH_FILE, {})
-    if "hash" not in auth or not hmac.compare_digest(_hash(body.password, auth["salt"]), auth["hash"]):
+def login(body: Creds, request: Request, response: Response):
+    username = body.username.strip().lower()
+    acct = ACCOUNTS.get(username)
+    if not acct or not hmac.compare_digest(_hash(body.password, acct["salt"]), acct["hash"]):
         time.sleep(0.5)
-        raise HTTPException(401, "Wrong password")
-    return {"token": _make_token()}
+        raise HTTPException(401, "Wrong username or password")
+    https = request.url.scheme == "https" or request.headers.get("x-forwarded-proto") == "https"
+    response.set_cookie(COOKIE, _make_token(username), max_age=TOKEN_TTL, httponly=True, samesite="lax", secure=https)
+    return {"username": username, "role": acct["role"]}
 
 
-@app.post("/api/password", dependencies=[Depends(require_admin)])
-def change_password(body: NewPassword):
-    with lock:
-        auth = _read(AUTH_FILE, {})
-        if not hmac.compare_digest(_hash(body.current, auth["salt"]), auth["hash"]):
-            raise HTTPException(401, "Current password is wrong")
-        if len(body.new) < 8:
-            raise HTTPException(400, "Password must be at least 8 characters")
-        auth["salt"] = secrets.token_hex(16)
-        auth["hash"] = _hash(body.new, auth["salt"])
-        auth["secret"] = secrets.token_hex(32)  # log out all other sessions
-        _write(AUTH_FILE, auth)
-    return {"token": _make_token()}
+@app.post("/api/logout")
+def logout(response: Response):
+    response.delete_cookie(COOKIE)
+    return {"ok": True}
 
 
-@app.get("/api/pins")
+@app.get("/api/pins", dependencies=[Depends(require_user)])
 def list_pins():
     return sorted(_read(PINS_FILE, []), key=lambda p: p.get("created", 0), reverse=True)
 
@@ -266,7 +264,12 @@ def delete_pin(pin_id: str):
     return {"ok": True}
 
 
-app.mount("/uploads", StaticFiles(directory=UPLOADS), name="uploads")
+@app.get("/uploads/{name}", dependencies=[Depends(require_user)])
+def get_upload(name: str):
+    path = UPLOADS / Path(name).name
+    if not path.is_file():
+        raise HTTPException(404, "Not found")
+    return FileResponse(path)
 
 
 @app.get("/")

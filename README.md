@@ -3,17 +3,28 @@
 A Pinterest-style gallery for showing off handmade flowers: crochet, paper, felt, knitted, quilling, origami and more.
 It is a **display site only**. Nothing is sold, and there is no cart or checkout.
 
-- **Visitors** can browse, search, filter by category, like pins and open them in a viewer.
-- **The admin** logs in with a password and can **upload** images or videos, **edit** products and **delete** them.
-- Products are stored on the server, so every visitor sees the same gallery.
+- Every visit starts on a **login page**. Nothing in the gallery loads until you log in.
+- The **user** account can browse, scroll, search, filter by category, like pins and open them in a viewer.
+- The **admin** account can do all of that, plus **upload** images or videos, **edit** products and **delete** them.
+- Products are stored on the server, so everyone sees the same gallery.
 
-![Visitor view](docs/visitor.png)
+![Login page](docs/login.png)
 
 ---
 
 ## Using the website
 
-### As a visitor
+### Accounts
+| Username | Default password | Can do |
+|---|---|---|
+| `admin` | `12345678` | View everything, plus upload, edit and delete products |
+| `user` | `12345678` | View, scroll, search and like products only |
+
+> ⚠️ This repo is public, so everyone can read the default passwords. **Change both before you share the site**: set the `ADMIN_PASSWORD` and `USER_PASSWORD` environment variables on your host, then restart. Changing a password logs out everyone who was signed in with it.
+
+Usernames are not case-sensitive. A login lasts 7 days, or until you click **Log out** in the sidebar.
+
+### As the user
 | What | How |
 |---|---|
 | Browse | Scroll the masonry grid. Cards fade in as they load. |
@@ -22,21 +33,17 @@ It is a **display site only**. Nothing is sold, and there is no cart or checkout
 | View a product | Click a card to open it full-size. Videos play in the viewer. |
 | Like | Click **Like** on a card or in the viewer. Liked pins get their own "♥ Liked" category in the sidebar. Likes are saved in your own browser only. |
 
-Visitors never see Upload, Edit or Delete buttons. The server also rejects those actions without an admin login.
+The user never sees Upload, Edit or Delete buttons, and the server rejects those actions for the user account.
+
+![User view](docs/visitor.png)
 
 ### As the admin
-1. Click **Admin login** in the sidebar, below the categories.
-2. **First time only:** the site asks you to *create* the admin password (at least 8 characters).
-   Do this right after deploying, **before** sharing the link, because the first person to open Admin login sets the password.
-3. After you log in you will see:
-   - **+ Upload** (in the sidebar and the top bar): drag and drop (or pick) an image or video (max 50 MB), add a title, category and description, then save.
-   - **Edit**: open a product, click *Edit*, change the text or replace the media.
-   - **Delete**: open a product and click *Delete*.
-4. Click **Log out (admin)** when you're done. Logins expire after 7 days.
+After logging in as `admin` you also get:
+- **+ Upload** (in the sidebar and the top bar): drag and drop (or pick) an image or video (max 50 MB), add a title, category and description, then publish.
+- **Edit**: open a product, click *Edit*, change the text or replace the media.
+- **Delete**: open a product and click *Delete*.
 
 ![Admin view](docs/admin.png)
-
-**Forgot the password?** Stop the app, delete `auth.json` from the data folder (see below), then start the app again. The next Admin login will ask you to create a new password. Your products are kept.
 
 ---
 
@@ -67,7 +74,7 @@ All data lives in one folder:
 |---|---|
 | `pins.json` | The product list. It is created on first start with 29 sample flowers. |
 | `uploads/` | Uploaded images and videos. |
-| `auth.json` | The admin password hash and login signing key. **Keep this private.** |
+| `auth.json` | The secret key used to sign logins. **Keep this private.** Deleting it logs everyone out. |
 
 The folder is chosen in this order: the `DATA_DIR` environment variable, then `/data` if it exists, then `./data` in the project folder.
 `data/` is in `.gitignore`, so it is never committed.
@@ -92,16 +99,21 @@ pyproject.toml       Same dependencies, in pyproject format
 ### API
 | Method | Path | Who |
 |---|---|---|
-| GET | `/api/pins` | Everyone |
-| GET | `/api/me` | Everyone (tells the page whether you are admin) |
-| POST | `/api/setup` | First-time password creation |
-| POST | `/api/login` | Admin login, returns a token |
+| POST | `/api/login` | Anyone: `{"username": "...", "password": "..."}`. Sets an HttpOnly session cookie |
+| POST | `/api/logout` | Anyone: clears the cookie |
+| GET | `/api/me` | Anyone: returns the current username and role, or nulls |
+| GET | `/api/pins` | Logged in (user or admin) |
+| GET | `/uploads/{file}` | Logged in (user or admin) |
 | POST | `/api/pins` | Admin: upload a product (multipart form) |
 | PUT | `/api/pins/{id}` | Admin: edit a product |
 | DELETE | `/api/pins/{id}` | Admin: delete a product |
-| POST | `/api/password` | Admin: change password (`{"current": "...", "new": "..."}`) |
 
-Admin requests send `Authorization: Bearer <token>`.
+### Settings (environment variables)
+| Variable | Default | Purpose |
+|---|---|---|
+| `ADMIN_PASSWORD` | `12345678` | Password for the `admin` account |
+| `USER_PASSWORD` | `12345678` | Password for the `user` account |
+| `DATA_DIR` | `/data` if it exists, else `./data` | Where products, uploads and the signing key are stored |
 
 ---
 
@@ -109,7 +121,7 @@ Admin requests send `Authorization: Bearer <token>`.
 
 The site is **one Python web app** that serves both the pages and the API.
 It needs a host that runs a long-lived server **with a persistent disk**, because uploads and the product list are saved as files.
-Without a persistent disk, every redeploy or restart wipes the uploads and the admin password.
+Without a persistent disk, every redeploy or restart wipes the uploads and logs everyone out.
 
 > ⚠️ **Vercel, Netlify and Lovable are not a good fit as-is.** They run serverless functions with a read-only or temporary filesystem, so uploads would vanish.
 > To use them you would need to move storage to a database plus file storage (for example Supabase, or Vercel Blob + Postgres).
@@ -119,7 +131,8 @@ Without a persistent disk, every redeploy or restart wipes the uploads and the a
 2. **New → Web Service** → pick this repo. Render detects the `Dockerfile`.
 3. Choose a plan that supports disks (persistent disks are not available on Render's free tier).
 4. **Advanced → Add Disk**: mount path `/data`, size 1 GB.
-5. Click **Create Web Service**. When it's live, open the URL and set the admin password straight away.
+5. Under **Environment**, add `ADMIN_PASSWORD` and `USER_PASSWORD` with your own passwords.
+6. Click **Create Web Service**.
 
 ### Option B — Fly.io (command line)
 ```bash
@@ -139,23 +152,25 @@ Add this to the generated `fly.toml`:
 ```
 Then:
 ```bash
+fly secrets set ADMIN_PASSWORD='your-admin-password' USER_PASSWORD='your-user-password'
 fly deploy
 ```
 Keep it to **one machine** (`fly scale count 1`), because the data is on a single volume.
 
 ### Option C — Railway
 1. **New Project → Deploy from GitHub repo** → pick this repo (it builds from the `Dockerfile`).
-2. Add a **Volume** to the service, mounted at `/data`.
+2. Add a **Volume** to the service, mounted at `/data`, and add `ADMIN_PASSWORD` and `USER_PASSWORD` under **Variables**.
 3. Under **Settings → Networking**, click **Generate Domain**.
 
 ### After deploying (any host)
-1. Open the site → **Admin login** → create a strong password.
-2. Upload a test image and a short test video, then check that they appear in another browser or a private window.
+1. Open the site. You should see the login page. Check that the default `12345678` passwords **no longer work**, and that your new ones do.
+2. As `admin`, upload a test image and a short test video. Then log in as `user` in a private window and check that they appear, with no Upload, Edit or Delete buttons.
 3. Restart or redeploy the app once, and check that the uploads are still there. That proves the disk is persistent.
 4. Back up the `/data` folder now and then.
 
 ### Ideas for later
 - Login rate limiting, to slow down password guessing
+- Changing passwords from inside the site
 - Moving to a database plus object storage (Postgres + S3, or Supabase) for bigger galleries or serverless hosting
 - More than one admin account
 

@@ -2,7 +2,7 @@
   const CATEGORIES = ["Crochet", "Paper", "Felt & Fabric", "Knitted", "Quilling", "Origami", "Other"];
   const $ = (s) => document.querySelector(s);
   const grid = $("#grid"), search = $("#search");
-  const state = { cat: "All", q: "", items: [], admin: false, editing: null,
+  const state = { cat: "All", q: "", items: [], role: null, admin: false, editing: null,
     likes: new Set(JSON.parse(localStorage.getItem("likes") || "[]")) };
 
   const toast = (msg) => {
@@ -11,23 +11,23 @@
   };
   const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
 
-  // API
-  const token = () => localStorage.getItem("adminToken");
+  // API (session lives in an HttpOnly cookie)
   async function api(path, opts = {}) {
     const headers = { ...(opts.headers || {}) };
-    if (token()) headers.Authorization = "Bearer " + token();
     if (opts.json) { headers["Content-Type"] = "application/json"; opts.body = JSON.stringify(opts.json); }
-    const r = await fetch(path, { ...opts, headers });
+    const r = await fetch(path, { ...opts, headers, credentials: "same-origin" });
     const data = await r.json().catch(() => ({}));
-    if (r.status === 401 && token() && path !== "/api/login") { setAdmin(false); localStorage.removeItem("adminToken"); }
+    if (r.status === 401 && path !== "/api/login" && state.role) { showLogin(); toast("Please log in again"); }
     if (!r.ok) throw new Error(data.detail || `Request failed (${r.status})`);
     return data;
   }
 
-  function setAdmin(on) {
-    state.admin = on;
-    document.body.classList.toggle("is-admin", on);
-    $("#adminBtn").textContent = on ? "Log out (admin)" : "Admin login";
+  function setSession(me = {}) {
+    state.role = me.role || null;
+    state.admin = state.role === "admin";
+    document.body.classList.toggle("is-admin", state.admin);
+    document.body.classList.toggle("logged-out", !state.role);
+    $("#who").innerHTML = state.role ? `Signed in as <b>${esc(me.username)}</b><span class="role">${esc(state.role)}</span>` : "";
   }
 
   async function loadItems() {
@@ -155,27 +155,37 @@
   $("#menuBtn").onclick = () => document.body.classList.add("nav-open");
   $("#scrim").onclick = () => document.body.classList.remove("nav-open");
 
-  // admin login / logout
-  let setupNeeded = false;
-  $("#adminBtn").onclick = async () => {
+  // login / logout
+  function showLogin() {
+    document.querySelectorAll(".modal.open").forEach(close);
     document.body.classList.remove("nav-open");
-    if (state.admin) { localStorage.removeItem("adminToken"); setAdmin(false); toast("Logged out"); return; }
-    $("#loginHeading").textContent = setupNeeded ? "Create admin password" : "Admin login";
-    $("#loginHint").textContent = setupNeeded ? "No admin yet. Choose a password (8+ characters)." : "Only the admin can add, edit or delete products.";
-    $("#loginSubmit").textContent = setupNeeded ? "Create & log in" : "Log in";
+    setSession({});
+    state.items = []; grid.innerHTML = "";
     $("#loginErr").hidden = true; $("#loginPw").value = "";
-    open($("#login")); setTimeout(() => $("#loginPw").focus(), 50);
-  };
+    setTimeout(() => $("#loginUser").focus(), 50);
+  }
+  async function enter(me) {
+    setSession(me);
+    state.cat = "All"; state.q = ""; search.value = "";
+    window.scrollTo(0, 0);
+    await loadItems(); render();
+  }
   $("#loginForm").addEventListener("submit", async (e) => {
     e.preventDefault();
-    const btn = $("#loginSubmit"); btn.disabled = true;
+    const btn = $("#loginSubmit"); btn.disabled = true; btn.textContent = "Logging in…";
     try {
-      const { token: t } = await api(setupNeeded ? "/api/setup" : "/api/login", { method: "POST", json: { password: $("#loginPw").value } });
-      localStorage.setItem("adminToken", t); setupNeeded = false; setAdmin(true);
-      close($("#login")); toast("Welcome, admin");
-    } catch (err) { $("#loginErr").textContent = err.message; $("#loginErr").hidden = false; }
-    finally { btn.disabled = false; }
+      const me = await api("/api/login", { method: "POST", json: { username: $("#loginUser").value, password: $("#loginPw").value } });
+      $("#loginForm").reset(); $("#loginErr").hidden = true;
+      await enter(me); toast(`Welcome, ${me.username}`);
+    } catch (err) {
+      $("#loginErr").textContent = err.message; $("#loginErr").hidden = false;
+      const card = $("#loginForm"); card.classList.remove("shake"); void card.offsetWidth; card.classList.add("shake");
+    } finally { btn.disabled = false; btn.textContent = "Log in"; }
   });
+  $("#logoutBtn").onclick = async () => {
+    await api("/api/logout", { method: "POST" }).catch(() => {});
+    showLogin(); toast("Logged out");
+  };
 
   // add / edit product
   const fileIn = $("#file"), drop = $("#drop");
@@ -243,12 +253,12 @@
     if (!editing) window.scrollTo({ top: 0, behavior: "smooth" });
   });
 
+  $("#loginBg").innerHTML = (window.SEED_ITEMS || []).slice(0, 24)
+    .map((i) => `<img src="${esc(i.src)}" alt="" loading="lazy">`).join("");
+
   (async () => {
-    if (token()) setAdmin(true);
-    const [me] = await Promise.all([api("/api/me").catch(() => ({})), loadItems()]);
-    setupNeeded = !!me.setup_needed;
-    setAdmin(!!me.admin);
-    if (!me.admin) localStorage.removeItem("adminToken");
-    render();
+    const me = await api("/api/me").catch(() => ({}));
+    document.body.classList.remove("booting");
+    if (me.role) await enter(me); else showLogin();
   })();
 })();
