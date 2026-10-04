@@ -1,0 +1,85 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Petal & Thread · Handmade Flowers</title>
+<meta name="description" content="A Pinterest-style gallery of handmade flowers: crochet, paper, felt, knitted, quilling and origami.">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🌸</text></svg>">
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+<aside class="sidebar" id="sidebar">
+  <div class="brand"><span class="logo">✿</span><span>Petal&nbsp;&amp;&nbsp;Thread</span></div>
+  <nav id="categories" aria-label="Categories"></nav>
+  <div class="side-section">
+    <button class="btn-primary wide" id="openUpload">+ Upload</button>
+  </div>
+  <p class="side-note">A hobby gallery of handmade flowers. Not a shop, just for looking.</p>
+</aside>
+<div class="scrim" id="scrim"></div>
+
+<div class="main">
+  <header class="topbar">
+    <button class="icon-btn menu" id="menuBtn" aria-label="Open menu">☰</button>
+    <div class="search">
+      <span class="search-icon">⌕</span>
+      <input id="search" type="search" placeholder="Search crochet roses, paper tulips…" autocomplete="off">
+      <kbd>/</kbd>
+    </div>
+    <button class="btn-primary" id="openUpload2">+<span class="hide-sm">&nbsp;Upload</span></button>
+  </header>
+
+  <section class="hero" id="hero">
+    <h1>Flowers that never wilt</h1>
+    <p>Crochet, paper, felt, knitted, quilling and origami blooms, all made by hand.</p>
+  </section>
+
+  <div class="chips" id="chips"></div>
+  <main class="masonry" id="grid" aria-live="polite"></main>
+  <p class="empty" id="empty" hidden>No flowers match your search. Try another word.</p>
+  <footer class="footer">Photos from <a href="https://commons.wikimedia.org" target="_blank" rel="noopener">Wikimedia Commons</a> under their listed licenses. Open any pin to see its credit.</footer>
+</div>
+
+<div class="modal" id="viewer" aria-hidden="true">
+  <div class="modal-card viewer-card">
+    <button class="icon-btn close" data-close aria-label="Close">✕</button>
+    <div class="viewer-media" id="viewerMedia"></div>
+    <div class="viewer-info">
+      <span class="tag" id="viewerCat"></span>
+      <h2 id="viewerTitle"></h2>
+      <p id="viewerDesc"></p>
+      <div class="viewer-actions">
+        <button class="btn-ghost" id="likeBtn">♡ Like</button>
+        <button class="btn-ghost danger" id="deleteBtn" hidden>Delete</button>
+      </div>
+      <p class="credit" id="viewerCredit"></p>
+    </div>
+  </div>
+</div>
+
+<div class="modal" id="upload" aria-hidden="true">
+  <form class="modal-card upload-card" id="uploadForm">
+    <button type="button" class="icon-btn close" data-close aria-label="Close">✕</button>
+    <h2>Share a handmade flower</h2>
+    <label class="drop" id="drop">
+      <input type="file" id="file" accept="image/*,video/*" hidden>
+      <div class="drop-inner" id="dropInner">
+        <div class="drop-icon">⬆</div>
+        <b>Drop an image or video here</b>
+        <span>or click to choose a file (max 50 MB)</span>
+      </div>
+    </label>
+    <input id="upTitle" placeholder="Title" required maxlength="60">
+    <select id="upCat"></select>
+    <textarea id="upDesc" placeholder="Tell us about it (materials, how long it took…)" rows="3" maxlength="300"></textarea>
+    <p class="hint">Uploads are saved in your browser on this device.</p>
+    <button class="btn-primary wide" type="submit">Publish pin</button>
+  </form>
+</div>
+
+<div class="toast" id="toast"></div>
+<script src="data.js"></script>
+<script src="app.js"></script>
+</body>
+</html>
