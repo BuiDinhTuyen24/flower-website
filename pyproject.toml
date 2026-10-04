@@ -1,0 +1,9 @@
+[project]
+name = "petal-thread"
+version = "0.2.0"
+description = "Pinterest-style handmade flowers gallery with admin uploads"
+requires-python = ">=3.10"
+dependencies = [
+    "fastapi[standard]>=0.115,<0.116",
+    "python-multipart>=0.0.9",
+]

@@ -97,6 +97,11 @@ kbd{font-size:11px;color:var(--muted);border:1px solid var(--muted);border-radiu
 .toast.show{opacity:1;transform:translate(-50%,0)}
 @keyframes rise{from{opacity:0;transform:translateY(16px)}to{opacity:1;transform:none}}
 
+body:not(.is-admin) .admin-only{display:none!important}
+.admin-pill{display:inline-flex;align-items:center;gap:6px;font-size:12px;font-weight:700;color:var(--accent);padding:0 8px}
+.form-error{color:#c0392b;font-size:13px;margin:0}
+.btn-primary:disabled{opacity:.6;cursor:progress}
+
 /* responsive */
 @media (max-width:860px){
   .sidebar{transform:translateX(-100%)}

@@ -13,7 +13,8 @@
   <div class="brand"><span class="logo">✿</span><span>Petal&nbsp;&amp;&nbsp;Thread</span></div>
   <nav id="categories" aria-label="Categories"></nav>
   <div class="side-section">
-    <button class="btn-primary wide" id="openUpload">+ Upload</button>
+    <button class="btn-primary wide admin-only" id="openUpload">+ Upload</button>
+    <button class="btn-ghost wide" id="adminBtn">Admin login</button>
   </div>
   <p class="side-note">A hobby gallery of handmade flowers. Not a shop, just for looking.</p>
 </aside>
@@ -27,7 +28,7 @@
       <input id="search" type="search" placeholder="Search crochet roses, paper tulips…" autocomplete="off">
       <kbd>/</kbd>
     </div>
-    <button class="btn-primary" id="openUpload2">+<span class="hide-sm">&nbsp;Upload</span></button>
+    <button class="btn-primary admin-only" id="openUpload2">+<span class="hide-sm">&nbsp;Upload</span></button>
   </header>
 
   <section class="hero" id="hero">
@@ -51,7 +52,8 @@
       <p id="viewerDesc"></p>
       <div class="viewer-actions">
         <button class="btn-ghost" id="likeBtn">♡ Like</button>
-        <button class="btn-ghost danger" id="deleteBtn" hidden>Delete</button>
+        <button class="btn-ghost admin-only" id="editBtn">Edit</button>
+        <button class="btn-ghost danger admin-only" id="deleteBtn">Delete</button>
       </div>
       <p class="credit" id="viewerCredit"></p>
     </div>
@@ -61,7 +63,7 @@
 <div class="modal" id="upload" aria-hidden="true">
   <form class="modal-card upload-card" id="uploadForm">
     <button type="button" class="icon-btn close" data-close aria-label="Close">✕</button>
-    <h2>Share a handmade flower</h2>
+    <h2 id="upHeading">Add a product</h2>
     <label class="drop" id="drop">
       <input type="file" id="file" accept="image/*,video/*" hidden>
       <div class="drop-inner" id="dropInner">
@@ -73,8 +75,19 @@
     <input id="upTitle" placeholder="Title" required maxlength="60">
     <select id="upCat"></select>
     <textarea id="upDesc" placeholder="Tell us about it (materials, how long it took…)" rows="3" maxlength="300"></textarea>
-    <p class="hint">Uploads are saved in your browser on this device.</p>
-    <button class="btn-primary wide" type="submit">Publish pin</button>
+    <p class="hint" id="upHint">Visible to everyone as soon as you publish.</p>
+    <button class="btn-primary wide" type="submit" id="upSubmit">Publish</button>
+  </form>
+</div>
+
+<div class="modal" id="login" aria-hidden="true">
+  <form class="modal-card upload-card" id="loginForm">
+    <button type="button" class="icon-btn close" data-close aria-label="Close">✕</button>
+    <h2 id="loginHeading">Admin login</h2>
+    <p class="hint" id="loginHint">Only the admin can add, edit or delete products.</p>
+    <input type="password" id="loginPw" placeholder="Password" autocomplete="current-password" required minlength="8">
+    <p class="form-error" id="loginErr" hidden></p>
+    <button class="btn-primary wide" type="submit" id="loginSubmit">Log in</button>
   </form>
 </div>
 

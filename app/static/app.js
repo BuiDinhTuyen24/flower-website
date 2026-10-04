@@ -2,49 +2,43 @@
   const CATEGORIES = ["Crochet", "Paper", "Felt & Fabric", "Knitted", "Quilling", "Origami", "Other"];
   const $ = (s) => document.querySelector(s);
   const grid = $("#grid"), search = $("#search");
-  const state = { cat: "All", q: "", items: [], likes: new Set(JSON.parse(localStorage.getItem("likes") || "[]")) };
-
-  // IndexedDB for user uploads (images + videos as Blobs)
-  const dbp = new Promise((res, rej) => {
-    const r = indexedDB.open("petal-thread", 1);
-    r.onupgradeneeded = () => r.result.createObjectStore("pins", { keyPath: "id" });
-    r.onsuccess = () => res(r.result);
-    r.onerror = () => rej(r.error);
-  });
-  const tx = async (mode, fn) => {
-    const db = await dbp;
-    return new Promise((res, rej) => {
-      const t = db.transaction("pins", mode), req = fn(t.objectStore("pins"));
-      t.oncomplete = () => res(req && req.result);
-      t.onerror = () => rej(t.error);
-    });
-  };
-  const dbAll = () => tx("readonly", (s) => s.getAll());
-  const dbPut = (v) => tx("readwrite", (s) => s.put(v));
-  const dbDel = (id) => tx("readwrite", (s) => s.delete(id));
+  const state = { cat: "All", q: "", items: [], admin: false, editing: null,
+    likes: new Set(JSON.parse(localStorage.getItem("likes") || "[]")) };
 
   const toast = (msg) => {
     const t = $("#toast"); t.textContent = msg; t.classList.add("show");
-    clearTimeout(toast.t); toast.t = setTimeout(() => t.classList.remove("show"), 2200);
+    clearTimeout(toast.t); toast.t = setTimeout(() => t.classList.remove("show"), 2400);
   };
   const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
 
+  // API
+  const token = () => localStorage.getItem("adminToken");
+  async function api(path, opts = {}) {
+    const headers = { ...(opts.headers || {}) };
+    if (token()) headers.Authorization = "Bearer " + token();
+    if (opts.json) { headers["Content-Type"] = "application/json"; opts.body = JSON.stringify(opts.json); }
+    const r = await fetch(path, { ...opts, headers });
+    const data = await r.json().catch(() => ({}));
+    if (r.status === 401 && token() && path !== "/api/login") { setAdmin(false); localStorage.removeItem("adminToken"); }
+    if (!r.ok) throw new Error(data.detail || `Request failed (${r.status})`);
+    return data;
+  }
+
+  function setAdmin(on) {
+    state.admin = on;
+    document.body.classList.toggle("is-admin", on);
+    $("#adminBtn").textContent = on ? "Log out (admin)" : "Admin login";
+  }
+
   async function loadItems() {
-    const seed = (window.SEED_ITEMS || []).map((it, i) => ({ ...it, id: "seed-" + i, type: "image", user: false,
-      desc: it.desc || `A handmade ${it.category.toLowerCase()} piece. ${it.license ? "License: " + it.license + "." : ""}` }));
-    let mine = [];
-    try {
-      const all = await Promise.race([dbAll(), new Promise((_, rej) => setTimeout(() => rej(new Error("IndexedDB timeout")), 1500))]);
-      mine = all.sort((a, b) => b.created - a.created)
-        .map((p) => ({ ...p, src: URL.createObjectURL(p.blob), user: true }));
-    } catch (e) { console.warn("IndexedDB unavailable", e); }
-    state.items.forEach((i) => i.user && URL.revokeObjectURL(i.src));
-    state.items = [...mine, ...seed];
+    try { state.items = await api("/api/pins"); }
+    catch (e) { console.error(e); toast("Could not load products"); state.items = []; }
   }
 
   function renderNav() {
     const counts = state.items.reduce((m, i) => (m[i.category] = (m[i.category] || 0) + 1, m), {});
     const cats = ["All", ...CATEGORIES.filter((c) => counts[c]), ...(state.likes.size ? ["Liked"] : [])];
+    if (!cats.includes(state.cat)) state.cat = "All";
     const n = (c) => c === "All" ? state.items.length : c === "Liked" ? state.items.filter((i) => state.likes.has(i.id)).length : counts[c];
     $("#categories").innerHTML = cats.map((c) =>
       `<button class="cat ${c === state.cat ? "active" : ""}" data-cat="${esc(c)}"><span>${c === "Liked" ? "♥ " : ""}${esc(c)}</span><span class="count">${n(c)}</span></button>`).join("");
@@ -64,21 +58,22 @@
 
   let renderToken = 0;
   async function renderGrid() {
-    const token = ++renderToken;
+    const tk = ++renderToken;
     const old = [...grid.children];
     if (old.length) { old.forEach((el) => el.classList.add("out")); await new Promise((r) => setTimeout(r, 180)); }
-    if (token !== renderToken) return;
+    if (tk !== renderToken) return;
     const list = filtered();
     $("#empty").hidden = list.length > 0;
     grid.innerHTML = list.map((i) => {
-      const ratio = i.w && i.h ? `style="aspect-ratio:${i.w}/${i.h}"` : "";
+      const ratio = i.w && i.h ? `style="aspect-ratio:${+i.w}/${+i.h}"` : "";
       const media = i.type === "video"
-        ? `<video src="${i.src}" muted loop playsinline preload="metadata"></video>`
+        ? `<video src="${esc(i.src)}" muted loop playsinline preload="metadata" ${ratio}></video>`
         : `<img src="${esc(i.src)}" alt="${esc(i.title)}" loading="lazy" ${ratio}>`;
+      const liked = state.likes.has(i.id);
       return `<article class="pin" tabindex="0" data-id="${esc(i.id)}">
         ${media}
-        ${i.type === "video" ? '<span class="badge">▶ Video</span>' : i.user ? '<span class="badge">Yours</span>' : ""}
-        <button class="save ${state.likes.has(i.id) ? "liked" : ""}" data-like="${esc(i.id)}">${state.likes.has(i.id) ? "♥ Liked" : "Like"}</button>
+        ${i.type === "video" ? '<span class="badge">▶ Video</span>' : ""}
+        <button class="save ${liked ? "liked" : ""}" data-like="${esc(i.id)}">${liked ? "♥ Liked" : "Like"}</button>
         <div class="overlay"><b>${esc(i.title)}</b><span>${esc(i.category)}</span></div>
       </article>`;
     }).join("");
@@ -104,7 +99,8 @@
   // modals
   const open = (m) => { m.classList.add("open"); m.setAttribute("aria-hidden", "false"); document.body.style.overflow = "hidden"; };
   const close = (m) => {
-    m.classList.remove("open"); m.setAttribute("aria-hidden", "true"); document.body.style.overflow = "";
+    m.classList.remove("open"); m.setAttribute("aria-hidden", "true");
+    if (!document.querySelector(".modal.open")) document.body.style.overflow = "";
     m.querySelectorAll("video").forEach((v) => v.pause());
   };
   document.querySelectorAll(".modal").forEach((m) => m.addEventListener("click", (e) => {
@@ -116,22 +112,24 @@
     const i = state.items.find((x) => x.id === id); if (!i) return;
     current = i;
     $("#viewerMedia").innerHTML = i.type === "video"
-      ? `<video src="${i.src}" controls autoplay playsinline loop></video>`
+      ? `<video src="${esc(i.src)}" controls autoplay playsinline loop></video>`
       : `<img src="${esc(i.src.replace(/\/\d+px-/, "/1200px-"))}" onerror="this.onerror=null;this.src='${esc(i.src)}'" alt="${esc(i.title)}">`;
     $("#viewerCat").textContent = i.category;
     $("#viewerTitle").textContent = i.title;
     $("#viewerDesc").textContent = i.desc || "";
-    $("#viewerCredit").innerHTML = i.credit ? `Photo: <a href="${esc(i.credit)}" target="_blank" rel="noopener">Wikimedia Commons</a> · ${esc(i.license || "")}` : i.user ? "Uploaded by you" : "";
+    $("#viewerCredit").innerHTML = i.credit ? `Photo: <a href="${esc(i.credit)}" target="_blank" rel="noopener">Wikimedia Commons</a> · ${esc(i.license || "")}` : "";
     const lb = $("#likeBtn"); const liked = state.likes.has(i.id);
     lb.classList.toggle("liked", liked); lb.textContent = liked ? "♥ Liked" : "♡ Like";
-    $("#deleteBtn").hidden = !i.user;
     open($("#viewer"));
   }
   $("#likeBtn").onclick = () => { const l = toggleLike(current.id); $("#likeBtn").classList.toggle("liked", l); $("#likeBtn").textContent = l ? "♥ Liked" : "♡ Like"; };
   $("#deleteBtn").onclick = async () => {
-    if (!confirm("Delete this pin?")) return;
-    await dbDel(current.id); close($("#viewer")); await loadItems(); render(); toast("Pin deleted");
+    if (!confirm(`Delete "${current.title}"? This removes it for everyone.`)) return;
+    try { await api(`/api/pins/${encodeURIComponent(current.id)}`, { method: "DELETE" }); }
+    catch (e) { return toast(e.message); }
+    close($("#viewer")); await loadItems(); render(); toast("Product deleted");
   };
+  $("#editBtn").onclick = () => { close($("#viewer")); openEditor(current); };
 
   grid.addEventListener("click", (e) => {
     const like = e.target.closest("[data-like]");
@@ -157,14 +155,37 @@
   $("#menuBtn").onclick = () => document.body.classList.add("nav-open");
   $("#scrim").onclick = () => document.body.classList.remove("nav-open");
 
-  // upload
+  // admin login / logout
+  let setupNeeded = false;
+  $("#adminBtn").onclick = async () => {
+    document.body.classList.remove("nav-open");
+    if (state.admin) { localStorage.removeItem("adminToken"); setAdmin(false); toast("Logged out"); return; }
+    $("#loginHeading").textContent = setupNeeded ? "Create admin password" : "Admin login";
+    $("#loginHint").textContent = setupNeeded ? "No admin yet. Choose a password (8+ characters)." : "Only the admin can add, edit or delete products.";
+    $("#loginSubmit").textContent = setupNeeded ? "Create & log in" : "Log in";
+    $("#loginErr").hidden = true; $("#loginPw").value = "";
+    open($("#login")); setTimeout(() => $("#loginPw").focus(), 50);
+  };
+  $("#loginForm").addEventListener("submit", async (e) => {
+    e.preventDefault();
+    const btn = $("#loginSubmit"); btn.disabled = true;
+    try {
+      const { token: t } = await api(setupNeeded ? "/api/setup" : "/api/login", { method: "POST", json: { password: $("#loginPw").value } });
+      localStorage.setItem("adminToken", t); setupNeeded = false; setAdmin(true);
+      close($("#login")); toast("Welcome, admin");
+    } catch (err) { $("#loginErr").textContent = err.message; $("#loginErr").hidden = false; }
+    finally { btn.disabled = false; }
+  });
+
+  // add / edit product
   const fileIn = $("#file"), drop = $("#drop");
   let picked = null, previewUrl = null;
   $("#upCat").innerHTML = CATEGORIES.map((c) => `<option>${c}</option>`).join("");
-  const resetDrop = () => {
+  const emptyDrop = '<div class="drop-icon">⬆</div><b>Drop an image or video here</b><span>or click to choose a file (max 50 MB)</span>';
+  const resetDrop = (html = emptyDrop) => {
     if (previewUrl) URL.revokeObjectURL(previewUrl);
     picked = previewUrl = null; fileIn.value = "";
-    $("#dropInner").innerHTML = '<div class="drop-icon">⬆</div><b>Drop an image or video here</b><span>or click to choose a file (max 50 MB)</span>';
+    $("#dropInner").innerHTML = html;
   };
   function setFile(f) {
     if (!f) return;
@@ -178,7 +199,21 @@
   ["dragenter", "dragover"].forEach((ev) => drop.addEventListener(ev, (e) => { e.preventDefault(); drop.classList.add("drag"); }));
   ["dragleave", "drop"].forEach((ev) => drop.addEventListener(ev, (e) => { e.preventDefault(); drop.classList.remove("drag"); }));
   drop.addEventListener("drop", (e) => setFile(e.dataTransfer.files[0]));
-  [$("#openUpload"), $("#openUpload2")].forEach((b) => b.onclick = () => { document.body.classList.remove("nav-open"); open($("#upload")); });
+
+  function openEditor(item = null) {
+    state.editing = item;
+    $("#uploadForm").reset();
+    $("#upHeading").textContent = item ? "Edit product" : "Add a product";
+    $("#upSubmit").textContent = item ? "Save changes" : "Publish";
+    $("#upHint").textContent = item ? "Leave the file as is to keep the current photo or video." : "Visible to everyone as soon as you publish.";
+    if (item) {
+      $("#upTitle").value = item.title; $("#upCat").value = item.category; $("#upDesc").value = item.desc || "";
+      resetDrop(item.type === "video" ? `<video src="${esc(item.src)}" muted autoplay loop playsinline></video>` : `<img src="${esc(item.src)}" alt="current">`);
+    } else resetDrop();
+    document.body.classList.remove("nav-open");
+    open($("#upload"));
+  }
+  [$("#openUpload"), $("#openUpload2")].forEach((b) => b.onclick = () => openEditor());
 
   const dims = (f, url) => new Promise((res) => {
     const el = f.type.startsWith("video") ? document.createElement("video") : new Image();
@@ -189,16 +224,31 @@
 
   $("#uploadForm").addEventListener("submit", async (e) => {
     e.preventDefault();
-    if (!picked) return toast("Choose an image or video first");
-    const { w, h } = await dims(picked, previewUrl);
-    const pin = { id: "u-" + Date.now(), title: $("#upTitle").value.trim(), category: $("#upCat").value,
-      desc: $("#upDesc").value.trim(), type: picked.type.startsWith("video") ? "video" : "image", blob: picked, w, h, created: Date.now() };
-    try { await dbPut(pin); } catch (err) { return toast("Could not save: storage full?"); }
-    e.target.reset(); resetDrop(); close($("#upload"));
-    state.cat = "All"; state.q = ""; search.value = "";
-    await loadItems(); render(); toast("Pin published 🌸");
-    window.scrollTo({ top: 0, behavior: "smooth" });
+    const editing = state.editing;
+    if (!editing && !picked) return toast("Choose an image or video first");
+    const fd = new FormData();
+    fd.append("title", $("#upTitle").value); fd.append("category", $("#upCat").value); fd.append("desc", $("#upDesc").value);
+    if (picked) {
+      const { w, h } = await dims(picked, previewUrl);
+      fd.append("file", picked); fd.append("w", w); fd.append("h", h);
+    }
+    const btn = $("#upSubmit"); btn.disabled = true; btn.textContent = picked ? "Uploading…" : "Saving…";
+    try {
+      await api(editing ? `/api/pins/${encodeURIComponent(editing.id)}` : "/api/pins", { method: editing ? "PUT" : "POST", body: fd });
+    } catch (err) { toast(err.message); btn.disabled = false; btn.textContent = editing ? "Save changes" : "Publish"; return; }
+    btn.disabled = false;
+    resetDrop(); close($("#upload"));
+    if (!editing) { state.cat = "All"; state.q = ""; search.value = ""; }
+    await loadItems(); render(); toast(editing ? "Changes saved" : "Product published 🌸");
+    if (!editing) window.scrollTo({ top: 0, behavior: "smooth" });
   });
 
-  loadItems().then(render).catch((e) => { console.error(e); render(); });
+  (async () => {
+    if (token()) setAdmin(true);
+    const [me] = await Promise.all([api("/api/me").catch(() => ({})), loadItems()]);
+    setupNeeded = !!me.setup_needed;
+    setAdmin(!!me.admin);
+    if (!me.admin) localStorage.removeItem("adminToken");
+    render();
+  })();
 })();
